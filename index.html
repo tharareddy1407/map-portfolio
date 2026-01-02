@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>USA Map Portfolio</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100vh; width: 100vw; }
+
+    /* Top bar */
+    .topbar{
+      position: fixed;
+      top: env(safe-area-inset-top, 10px);
+      left: 12px;
+      right: 12px;
+      z-index: 9999;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      pointer-events: none;
+      font-family: Arial, sans-serif;
+    }
+    .topbar a{
+      pointer-events: auto;
+      background: #fff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #111;
+      box-shadow: 0 10px 25px rgba(0,0,0,.15);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    /* Panel (desktop) */
+    #panel{
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 10px) + 56px);
+      left: 12px;
+      z-index: 9999;
+      width: 360px;
+      max-width: calc(100% - 24px);
+      background: #fff;
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.18);
+      font-family: Arial, sans-serif;
+      display: none;
+    }
+    #panel h3{ margin: 0 0 8px; font-size: 18px; }
+    #panel .close{
+      float:right;
+      cursor:pointer;
+      font-weight: bold;
+      font-size: 18px;
+      padding: 4px 8px;
+      border-radius: 10px;
+    }
+    #panel .close:active{ background: #f0f0f0; }
+    #panel .meta{ color:#555; font-size: 13px; margin-bottom: 10px; }
+    #panel ul{ margin: 8px 0 0 18px; }
+
+    /* Mobile: bottom sheet */
+    @media (max-width: 768px){
+      #panel{
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: 0;
+        width: auto;
+        max-width: none;
+        border-radius: 16px 16px 0 0;
+        padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+        box-shadow: 0 -10px 30px rgba(0,0,0,.18);
+      }
+      .topbar{
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+    }
+
+    /* Push Leaflet controls below notch/topbar */
+    .leaflet-top.leaflet-left{
+      margin-top: calc(env(safe-area-inset-top, 10px) + 60px);
+    }
+
+    /* Travel icon element */
+    .travel-emoji{
+      font-size: 24px;
+      transform: translate(-50%,-50%);
+      will-change: transform;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Top links -->
+  <div class="topbar">
+    <a href="https://github.com/YOUR_GITHUB" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://linkedin.com/in/YOUR_LINKEDIN" target="_blank" rel="noopener">LinkedIn</a>
+    <a href="resume.pdf" target="_blank" rel="noopener">Resume</a>
+  </div>
+
+  <!-- Side/Bottom panel -->
+  <div id="panel">
+    <span class="close" onclick="hidePanel()">×</span>
+    <h3 id="panelTitle"></h3>
+    <div class="meta" id="panelMeta"></div>
+    <div id="panelBody"></div>
+  </div>
+
+  <!-- Map container -->
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // ---------------- MAP SETUP ----------------
+    const map = L.map('map', {
+      zoomControl: true,
+      tap: true,
+      dragging: true,
+      scrollWheelZoom: false
+    }).setView([39.5, -98.35], 4);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 18
+    }).addTo(map);
+
+    // ---------------- DESTINATIONS ----------------
+    const places = {
+      projects: {
+        name: "Projects",
+        city: "Los Angeles, CA",
+        latlng: [34.0522, -118.2437],
+        body: `
+          <p><b>Featured work</b></p>
+          <ul>
+            <li>ETL Pipeline (Python + Spark + AWS)</li>
+            <li>Streaming Analytics (Kafka + Spark)</li>
+            <li>SQL KPI Dashboard (Power BI)</li>
+          </ul>
+          <p><a target="_blank" rel="noopener" href="https://github.com/YOUR_GITHUB">Open GitHub</a></p>
+        `
+      },
+      resume: {
+        name: "Resume",
+        city: "Denver, CO",
+        latlng: [39.7392, -104.9903],
+        body: `
+          <p><b>Resume highlights</b></p>
+          <ul>
+            <li>Cloud data pipelines (AWS)</li>
+            <li>Spark performance + cost tuning</li>
+            <li>Analytics-ready datasets</li>
+          </ul>
+          <p><a target="_blank" rel="noopener" href="resume.pdf">Open Resume</a></p>
+        `
+      },
+      skills: {
+        name: "Tech Skills",
+        city: "Dallas, TX",
+        latlng: [32.7767, -96.7970],
+        body: `
+          <p><b>Core stack</b></p>
+          <ul>
+            <li>Python, SQL</li>
+            <li>AWS: S3, Glue, Lambda, Redshift</li>
+            <li>Spark, Airflow</li>
+            <li>Power BI / Tableau</li>
+          </ul>
+        `
+      },
+      experience: {
+        name: "Experience",
+        city: "New York, NY",
+        latlng: [40.7128, -74.0060],
+        body: `
+          <p><b>Recent roles</b></p>
+          <ul>
+            <li>Senior Data Engineer — (Company)</li>
+            <li>Data Engineer — (Company)</li>
+            <li>Data Engineer — (Company)</li>
+          </ul>
+          <p>Click other pins to explore.</p>
+        `
+      },
+      contact: {
+        name: "Contact Me",
+        city: "Atlanta, GA",
+        latlng: [33.7490, -84.3880],
+        body: `
+          <p><b>Let’s connect</b></p>
+          <ul>
+            <li>Email: yourname@email.com</li>
+            <li>LinkedIn: <a target="_blank" rel="noopener" href="https://linkedin.com/in/YOUR_LINKEDIN">Profile</a></li>
+            <li>GitHub: <a target="_blank" rel="noopener" href="https://github.com/YOUR_GITHUB">Repos</a></li>
+          </ul>
+        `
+      }
+    };
+
+    // Pin colors
+    const pinColors = {
+      projects: "#e74c3c",
+      resume: "#3498db",
+      skills: "#2ecc71",
+      experience: "#9b59b6",
+      contact: "#f1c40f"
+    };
+
+    // ---------------- PANEL ----------------
+    function openPanel(key){
+      const p = places[key];
+      document.getElementById('panelTitle').innerText = p.name;
+      document.getElementById('panelMeta').innerText = p.city;
+      document.getElementById('panelBody').innerHTML = p.body;
+      document.getElementById('panel').style.display = 'block';
+    }
+
+    function hidePanel(){
+      document.getElementById('panel').style.display = 'none';
+    }
+
+    // ---------------- TRAVEL ANIMATION ----------------
+    // Change this to "plane" if you want ✈️
+    const travelMode = "car"; // "car" | "plane"
+
+    const travelIcon = L.divIcon({
+      className: "",
+      html: `<div id="travelIcon" class="travel-emoji">${travelMode === "car" ? "🚗" : "✈️"}</div>`,
+      iconSize: [0, 0]
+    });
+
+    let currentKey = "resume";
+    let travelMarker = L.marker(places[currentKey].latlng, { icon: travelIcon }).addTo(map);
+
+    let routeLine = null;
+    let animId = null;
+
+    // Add a curve by using a midpoint (simple + looks good)
+    function buildRoute(from, to){
+      const mid = [
+        (from[0] + to[0]) / 2 + 1.0,   // curve height
+        (from[1] + to[1]) / 2
+      ];
+      return [from, mid, to];
+    }
+
+    // Create smooth points along the route
+    function densify(points, totalSteps = 180){
+      const out = [];
+      const segments = points.length - 1;
+      const stepsPerSeg = Math.max(30, Math.floor(totalSteps / segments));
+
+      for (let i = 0; i < segments; i++){
+        const a = points[i], b = points[i+1];
+        for (let s = 0; s < stepsPerSeg; s++){
+          const t = s / stepsPerSeg;
+          out.push([a[0] + (b[0]-a[0]) * t, a[1] + (b[1]-a[1]) * t]);
+        }
+      }
+      out.push(points[points.length - 1]);
+      return out;
+    }
+
+    // Rotate icon to face direction (best for plane)
+    function rotateIcon(path, idx){
+      const a = path[idx];
+      const b = path[Math.min(idx + 1, path.length - 1)];
+      const dx = b[1] - a[1];
+      const dy = b[0] - a[0];
+      const angle = Math.atan2(dx, dy) * (180 / Math.PI);
+
+      const el = document.getElementById("travelIcon");
+      if (el) el.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
+    }
+
+    function animateAlong(path, durationMs, onDone){
+      const start = performance.now();
+
+      function frame(now){
+        const t = Math.min((now - start) / durationMs, 1);
+        const idx = Math.floor(t * (path.length - 1));
+
+        travelMarker.setLatLng(path[idx]);
+        rotateIcon(path, idx);
+
+        if (t < 1) animId = requestAnimationFrame(frame);
+        else {
+          animId = null;
+          onDone?.();
+        }
+      }
+
+      animId = requestAnimationFrame(frame);
+    }
+
+    function travelTo(targetKey){
+      if (targetKey === currentKey){
+        openPanel(targetKey);
+        map.flyTo(places[targetKey].latlng, 5, { duration: 0.7 });
+        return;
+      }
+
+      if (animId) cancelAnimationFrame(animId);
+
+      const from = places[currentKey].latlng;
+      const to = places[targetKey].latlng;
+
+      // build route
+      const route = buildRoute(from, to);
+
+      // draw route line
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = L.polyline(route, { weight: 4, opacity: 0.7 }).addTo(map);
+
+      // zoom/pan to show route
+      map.flyToBounds(routeLine.getBounds().pad(0.25), { duration: 0.8 });
+
+      // animate marker
+      const path = densify(route, 210);
+      animateAlong(path, 1600, () => {
+        currentKey = targetKey;
+        openPanel(targetKey);
+        map.flyTo(places[targetKey].latlng, 5, { duration: 0.6 });
+      });
+    }
+
+    // ---------------- PINS ----------------
+    Object.entries(places).forEach(([key, p]) => {
+      L.circleMarker(p.latlng, {
+        radius: 10,
+        color: "#fff",
+        weight: 2,
+        fillColor: pinColors[key],
+        fillOpacity: 1
+      })
+      .addTo(map)
+      .bindTooltip(p.name, { direction: "top", offset: [0, -8] })
+      .on('click', () => travelTo(key)); // <-- animation trigger
+    });
+
+    // Default open
+    openPanel('resume');
+    map.flyTo(places.resume.latlng, 5, { duration: 0.8 });
+
+    // Fix map sizing after orientation change
+    window.addEventListener('resize', () => {
+      setTimeout(() => map.invalidateSize(), 150);
+    });
+  </script>
+</body>
+</html>
