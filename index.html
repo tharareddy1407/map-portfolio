@@ -4,87 +4,93 @@
   <meta charset="utf-8" />
   <title>Map Portfolio</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
   <style>
     :root{
       --bg:#ffffff; --text:#111; --muted:#555; --card:#fff;
       --shadow:0 12px 30px rgba(0,0,0,.18);
-      --pill:#fff; --pillText:#111; --border:rgba(0,0,0,.08);
+      --pill:#fff; --pillText:#111; --border:rgba(0,0,0,.10);
     }
     body.dark{
       --bg:#0b1220; --text:#e7eefc; --muted:rgba(231,238,252,.75); --card:#121a2b;
       --shadow:0 12px 30px rgba(0,0,0,.55);
-      --pill:#121a2b; --pillText:#e7eefc; --border:rgba(255,255,255,.10);
+      --pill:#121a2b; --pillText:#e7eefc; --border:rgba(255,255,255,.12);
     }
-    html, body { height: 100%; margin: 0; background: var(--bg); }
-    #map { height: 100vh; width: 100vw; }
 
-    /* keep travel marker above lines */
+    html, body { height:100%; margin:0; background:var(--bg); }
+    #map { height:100vh; width:100vw; }
+
+    /* Put marker above line */
     .leaflet-overlay-pane { z-index: 400; }
     .leaflet-marker-pane  { z-index: 650; }
 
+    /* Top bar */
     .topbar{
-      position: fixed;
+      position:fixed;
       top: env(safe-area-inset-top, 10px);
-      left: 12px; right: 12px;
-      z-index: 9999;
-      display:flex; gap:10px;
-      align-items:center;
-      justify-content:space-between;
+      left:12px; right:12px;
+      z-index:9999;
+      display:flex; justify-content:space-between; gap:10px;
       font-family: Arial, sans-serif;
       pointer-events:none;
     }
-    .left,.right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; pointer-events:auto; }
+    .topbar .left,.topbar .right{ display:flex; gap:10px; pointer-events:auto; }
     .pill{
-      background: var(--pill);
-      color: var(--pillText);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      box-shadow: var(--shadow);
-      padding: 10px 12px;
-      font-size: 14px;
+      background:var(--pill);
+      color:var(--pillText);
+      border:1px solid var(--border);
+      border-radius:14px;
+      box-shadow:var(--shadow);
+      padding:10px 12px;
+      font-size:14px;
       cursor:pointer;
       user-select:none;
       white-space:nowrap;
       text-decoration:none;
     }
+    .pill:active{ transform: translateY(1px); }
 
+    /* Info panel */
     #panel{
-      position: fixed;
+      position:fixed;
       top: calc(env(safe-area-inset-top, 10px) + 64px);
-      left: 12px;
-      z-index: 9999;
-      width: 380px;
+      left:12px;
+      z-index:9999;
+      width:380px;
       max-width: calc(100% - 24px);
-      background: var(--card);
-      color: var(--text);
-      border-radius: 16px;
-      padding: 14px;
-      box-shadow: var(--shadow);
-      border: 1px solid var(--border);
+      background:var(--card);
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:14px;
+      box-shadow:var(--shadow);
       font-family: Arial, sans-serif;
       display:none;
     }
     #panel h3{ margin:0 0 8px; font-size:18px; }
+    #panel .meta{ color:var(--muted); font-size:13px; margin-bottom:10px; }
     #panel .close{
-      float:right; cursor:pointer; font-weight:700;
-      font-size:18px; padding:4px 8px; border-radius:10px;
+      float:right; cursor:pointer; font-weight:700; font-size:18px;
+      padding:4px 8px; border-radius:10px;
     }
-    #panel .meta{ color: var(--muted); font-size:13px; margin-bottom:10px; }
+    #panel a{ color:inherit; }
 
     @media (max-width: 768px){
       #panel{
-        left: 0; right: 0;
-        top: auto; bottom: 0;
-        width: auto; max-width: none;
-        border-radius: 18px 18px 0 0;
+        left:0; right:0;
+        top:auto; bottom:0;
+        width:auto; max-width:none;
+        border-radius:18px 18px 0 0;
         padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
         box-shadow: 0 -10px 30px rgba(0,0,0,.18);
       }
     }
 
+    /* Keep zoom buttons lower than topbar */
     .leaflet-top.leaflet-left{ margin-top: calc(env(safe-area-inset-top, 10px) + 72px); }
 
+    /* Travel emoji marker */
     .travel-emoji{
       font-size: 26px;
       transform: translate(-50%,-50%);
@@ -92,9 +98,14 @@
       pointer-events:none;
     }
 
+    /* ✅ CSS dash animation (no JS loops) */
     .route-line{
       stroke-linecap: round;
       stroke-linejoin: round;
+      animation: dashmove 1.2s linear infinite;
+    }
+    @keyframes dashmove{
+      to { stroke-dashoffset: -22; }
     }
   </style>
 </head>
@@ -121,42 +132,37 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // ---------- HELPERS (fix bad coordinates) ----------
+    // ---------- SAFE COORD FIX (lat/lng swap protection) ----------
     function normalizeLatLng(ll){
-      if (!Array.isArray(ll) || ll.length !== 2) return [0,0];
       let a = Number(ll[0]), b = Number(ll[1]);
-
-      // if "lat" looks like a longitude and "lng" looks like a latitude -> swap
-      // Example: [-118.24, 34.05] should become [34.05, -118.24]
-      const looksSwapped = (Math.abs(a) > 90 && Math.abs(b) <= 90);
-      if (looksSwapped) [a, b] = [b, a];
-
-      // clamp
+      // If first is longitude-like (>90) and second latitude-like (<=90), swap.
+      if (Math.abs(a) > 90 && Math.abs(b) <= 90) [a, b] = [b, a];
       a = Math.max(-90, Math.min(90, a));
       b = Math.max(-180, Math.min(180, b));
       return [a, b]; // [lat, lng]
     }
 
-    function routeWeightForZoom(z){
+    // ---------- STYLE SCALE ----------
+    function routeWeight(z){
       if (z <= 4) return 2;
       if (z === 5) return 3;
       if (z === 6) return 4;
       if (z === 7) return 5;
-      return 6; // 8+
+      return 6;
     }
-    function dashArrayForZoom(z){
-      // smaller dashes when zoomed out
+    function routeDash(z){
       if (z <= 4) return "8 10";
       if (z <= 6) return "10 10";
       return "12 10";
     }
-    function pinRadiusForZoom(z){
+    function pinRadius(z){
       if (z <= 4) return 6;
       if (z === 5) return 7;
       if (z === 6) return 8;
       return 10;
     }
-    function densify(points, stepsPerSeg = 180){
+
+    function densify(points, stepsPerSeg=220){
       const out = [];
       for (let i=0; i<points.length-1; i++){
         const a = points[i], b = points[i+1];
@@ -168,40 +174,64 @@
       out.push(points[points.length-1]);
       return out;
     }
+
     function chooseEmoji(from, to){
       const lonDiff = Math.abs(from[1] - to[1]);
-      return (lonDiff > 18) ? "✈️" : "🚗";
+      return lonDiff > 18 ? "✈️" : "🚗";
     }
 
     // ---------- MAP ----------
     const usaBounds = L.latLngBounds([[24.5, -125.0], [49.8, -66.5]]);
 
-    const map = L.map('map', {
+    const map = L.map("map", {
       zoomControl: true,
       worldCopyJump: false,
       maxBounds: usaBounds.pad(0.15),
-      maxBoundsViscosity: 1.0, // hard lock
-      minZoom: 4,              // prevents zooming to world
-      maxZoom: 10
-    }).fitBounds(usaBounds, { animate:false });
+      maxBoundsViscosity: 1.0,
+      minZoom: 4,
+      maxZoom: 10,
+      inertia: true
+    });
 
-    // noWrap prevents repeated world tiles
     const lightTiles = L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      { attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:18, noWrap:true }
+      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      { attribution:"&copy; OpenStreetMap &copy; CARTO", maxZoom:18, noWrap:true }
     ).addTo(map);
 
     const darkTiles = L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      { attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:18, noWrap:true }
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      { attribution:"&copy; OpenStreetMap &copy; CARTO", maxZoom:18, noWrap:true }
     );
 
-    function refreshMapSize(){ setTimeout(() => map.invalidateSize(true), 200); }
-    window.addEventListener('resize', refreshMapSize);
-    window.addEventListener('orientationchange', refreshMapSize);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshMapSize(); });
+    map.fitBounds(usaBounds, { animate:false });
 
-    // ---------- DATA ----------
+    function refreshMapSize(){
+      setTimeout(() => map.invalidateSize(true), 150);
+    }
+    window.addEventListener("resize", refreshMapSize);
+    window.addEventListener("orientationchange", refreshMapSize);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshMapSize(); });
+
+    // ---------- PANEL ----------
+    const panel = document.getElementById("panel");
+    const panelTitle = document.getElementById("panelTitle");
+    const panelMeta  = document.getElementById("panelMeta");
+    const panelBody  = document.getElementById("panelBody");
+    document.getElementById("closePanel").addEventListener("click", () => {
+      panel.style.display = "none";
+      refreshMapSize();
+    });
+
+    function openPanel(key){
+      const p = places[key];
+      panelTitle.textContent = p.name;
+      panelMeta.textContent  = p.city;
+      panelBody.innerHTML    = p.html;
+      panel.style.display = "block";
+      refreshMapSize();
+    }
+
+    // ---------- DESTINATIONS ----------
     const places = {
       resume:     { name:"Resume",      city:"Denver, CO",      latlng: normalizeLatLng([39.7392, -104.9903]), color:"#3498db",
         html:`<ul><li>Highlights</li><li>Download link</li></ul>` },
@@ -218,44 +248,7 @@
         </ul>` }
     };
 
-    // ---------- PANEL ----------
-    const panel = document.getElementById("panel");
-    const panelTitle = document.getElementById("panelTitle");
-    const panelMeta = document.getElementById("panelMeta");
-    const panelBody = document.getElementById("panelBody");
-    document.getElementById("closePanel").addEventListener("click", () => {
-      panel.style.display = "none";
-      refreshMapSize();
-    });
-    function openPanel(key){
-      const p = places[key];
-      panelTitle.textContent = p.name;
-      panelMeta.textContent = p.city;
-      panelBody.innerHTML = p.html;
-      panel.style.display = "block";
-      refreshMapSize();
-    }
-
-    // ---------- DASH ANIMATION ----------
-    let dashOffset = 0;
-    let dashAnimId = null;
-    function stopDashAnimation(){
-      if (dashAnimId) cancelAnimationFrame(dashAnimId);
-      dashAnimId = null;
-    }
-    function startDashAnimation(polyline){
-      stopDashAnimation();
-      const el = polyline.getElement();
-      if (!el) return;
-      function tick(){
-        dashOffset = (dashOffset + 1) % 22;
-        el.style.strokeDashoffset = String(dashOffset);
-        dashAnimId = requestAnimationFrame(tick);
-      }
-      dashAnimId = requestAnimationFrame(tick);
-    }
-
-    // ---------- TRAVEL ----------
+    // ---------- TRAVEL MARKER ----------
     const travelIcon = L.divIcon({
       className:"",
       html:`<div id="travelIcon" class="travel-emoji">🚗</div>`,
@@ -263,16 +256,32 @@
     });
 
     let currentKey = "resume";
-    let travelMarker = L.marker(places[currentKey].latlng, { icon: travelIcon, interactive:false }).addTo(map);
+    let travelMarker = L.marker(places[currentKey].latlng, {
+      icon: travelIcon,
+      interactive: false,
+      keyboard: false
+    }).addTo(map);
 
     let routeLine = null;
     let animId = null;
-    let isTraveling = false;
+    let travelLock = false; // prevents stuck overlaps
+
+    function unlockMap(){
+      // hard re-enable (fix "map stuck")
+      map.dragging.enable();
+      map.scrollWheelZoom.enable();
+      map.doubleClickZoom.enable();
+      map.touchZoom.enable();
+      map.boxZoom.enable();
+      map.keyboard.enable();
+      if (map.tap) map.tap.enable();
+    }
 
     function cancelTravel(){
       if (animId) cancelAnimationFrame(animId);
       animId = null;
-      isTraveling = false;
+      travelLock = false;
+      unlockMap();
     }
 
     function rotateEmoji(path, idx){
@@ -287,78 +296,93 @@
 
     function animateAlong(path, durationMs, done){
       const t0 = performance.now();
+      const last = path.length - 1;
       const ease = t => 1 - Math.pow(1 - t, 3);
-      const lastIdx = path.length - 1;
 
-      function frame(now){
-        const t = Math.min((now - t0)/durationMs, 1);
-        const idx = Math.min(Math.floor(ease(t) * lastIdx), lastIdx);
+      function step(now){
+        const t = Math.min((now - t0) / durationMs, 1);
+        const idx = Math.min(Math.floor(ease(t) * last), last);
         travelMarker.setLatLng(path[idx]);
         rotateEmoji(path, idx);
-        if (t < 1) animId = requestAnimationFrame(frame);
+        if (t < 1) animId = requestAnimationFrame(step);
         else { animId = null; done?.(); }
       }
-      animId = requestAnimationFrame(frame);
+      animId = requestAnimationFrame(step);
+    }
+
+    function panSmoothTo(latlng){
+      // Stable camera movement (NO fitBounds spam)
+      map.panTo(latlng, { animate:true, duration:0.6 });
     }
 
     function travelTo(key){
       if (!places[key]) return;
 
-      // same dot -> open panel (no travel)
+      // if same point, just open
       if (key === currentKey){
         openPanel(key);
         return;
       }
 
-      cancelTravel();
-      isTraveling = true;
+      // safety: if already traveling, cancel and restart clean
+      if (travelLock) cancelTravel();
+      travelLock = true;
 
       const from = places[currentKey].latlng;
       const to   = places[key].latlng;
+
+      // Update current key immediately (prevents tour deadlocks)
       currentKey = key;
 
-      const iconEl = document.getElementById("travelIcon");
-      if (iconEl) iconEl.textContent = chooseEmoji(from, to);
+      // Emoji
+      const el = document.getElementById("travelIcon");
+      if (el) el.textContent = chooseEmoji(from, to);
 
-      const route = [from, to]; // straight route for stability
-
+      // Remove old line
       if (routeLine) map.removeLayer(routeLine);
-      routeLine = L.polyline(route, {
-        weight: routeWeightForZoom(map.getZoom()),
+
+      const z = map.getZoom();
+      routeLine = L.polyline([from, to], {
+        weight: routeWeight(z),
         opacity: 0.95,
-        dashArray: dashArrayForZoom(map.getZoom()),
+        dashArray: routeDash(z),
         className: "route-line"
       }).addTo(map);
 
-      // keep map in USA while fitting route
-      map.fitBounds(routeLine.getBounds().pad(0.25), { animate:true, duration: 0.7 });
+      // Camera: pan (stable) instead of fitBounds (causes freeze)
+      panSmoothTo(to);
 
-      // animate exactly on same route points
-      const path = densify(route, 220);
-      setTimeout(() => startDashAnimation(routeLine), 60);
+      // Animate on same route
+      const path = densify([from, to], 240);
 
-      animateAlong(path, 1500, () => {
-        isTraveling = false;
+      // hard timeout safety (never stuck)
+      const failsafe = setTimeout(() => {
+        travelLock = false;
+        unlockMap();
+      }, 4000);
+
+      animateAlong(path, 1400, () => {
+        clearTimeout(failsafe);
+        travelLock = false;
+        unlockMap();
         openPanel(key);
       });
     }
 
-    // ---------- PINS ----------
+    // Update line + pins on zoom (prevents giant stuff when zoomed out)
     const pins = {};
-    function applyPinSizing(){
+    function rescale(){
       const z = map.getZoom();
-      Object.values(pins).forEach(m => m.setStyle({ radius: pinRadiusForZoom(z) }));
-      if (routeLine){
-        routeLine.setStyle({
-          weight: routeWeightForZoom(z),
-          dashArray: dashArrayForZoom(z)
-        });
-      }
+      Object.values(pins).forEach(m => m.setStyle({ radius: pinRadius(z) }));
+      if (routeLine) routeLine.setStyle({ weight: routeWeight(z), dashArray: routeDash(z) });
+      unlockMap(); // extra safety
     }
+    map.on("zoomend", rescale);
 
+    // Create pins
     Object.entries(places).forEach(([key, p]) => {
-      const m = L.circleMarker(p.latlng, {
-        radius: pinRadiusForZoom(map.getZoom()),
+      pins[key] = L.circleMarker(p.latlng, {
+        radius: pinRadius(map.getZoom()),
         color:"#fff",
         weight:2,
         fillColor:p.color,
@@ -367,12 +391,45 @@
         .bindTooltip(p.name, { direction:"top", offset:[0,-8] })
         .on("click", () => {
           stopTour();
-          travelTo(key); // ALWAYS triggers travel
+          travelTo(key);
         });
-      pins[key] = m;
     });
 
-    map.on("zoomend", applyPinSizing);
+    // ---------- TOUR (stable) ----------
+    let tourOn = false;
+    let tourTimer = null;
+    const tourOrder = ["resume","projects","skills","experience","contact"];
+
+    function stopTour(){
+      tourOn = false;
+      document.getElementById("tourBtn").textContent = "▶ Tour";
+      if (tourTimer) clearTimeout(tourTimer);
+      tourTimer = null;
+    }
+
+    function startTour(){
+      tourOn = true;
+      document.getElementById("tourBtn").textContent = "⏸ Tour";
+      let i = 0;
+
+      const step = () => {
+        if (!tourOn) return;
+        if (travelLock){
+          tourTimer = setTimeout(step, 300);
+          return;
+        }
+        travelTo(tourOrder[i % tourOrder.length]);
+        i++;
+        tourTimer = setTimeout(step, 2200);
+      };
+
+      step();
+    }
+
+    document.getElementById("tourBtn").addEventListener("click", () => {
+      if (tourOn) stopTour();
+      else startTour();
+    });
 
     // ---------- THEME ----------
     let isDark = false;
@@ -387,46 +444,23 @@
         if (map.hasLayer(darkTiles)) map.removeLayer(darkTiles);
         if (!map.hasLayer(lightTiles)) lightTiles.addTo(map);
       }
+      refreshMapSize();
     }
-
-    // ---------- TOUR ----------
-    let tourOn = false;
-    let tourTimer = null;
-    const tourOrder = ["resume","projects","skills","experience","contact"];
-
-    function startTour(){
-      tourOn = true;
-      document.getElementById("tourBtn").textContent = "⏸ Tour";
-      let i = 0;
-
-      const step = () => {
-        if (!tourOn) return;
-        if (isTraveling){
-          tourTimer = setTimeout(step, 250);
-          return;
-        }
-        travelTo(tourOrder[i % tourOrder.length]);
-        i++;
-        tourTimer = setTimeout(step, 2200);
-      };
-      step();
-    }
-
-    function stopTour(){
-      tourOn = false;
-      document.getElementById("tourBtn").textContent = "▶ Tour";
-      if (tourTimer) clearTimeout(tourTimer);
-      tourTimer = null;
-    }
-
-    document.getElementById("tourBtn").addEventListener("click", () => tourOn ? stopTour() : startTour());
     document.getElementById("themeBtn").addEventListener("click", toggleTheme);
 
     // ---------- INIT ----------
     refreshMapSize();
-    applyPinSizing();
+    unlockMap();
+    rescale();
+    map.setView(places.resume.latlng, 6, { animate:false });
     openPanel("resume");
-    map.setView(places.resume.latlng, 5, { animate:false });
+
+    // If user touches map while traveling, cancel travel cleanly (prevents stuck)
+    ["mousedown","touchstart","wheel"].forEach(evt => {
+      map.getContainer().addEventListener(evt, () => {
+        if (travelLock && tourOn === false) cancelTravel();
+      }, { passive:true });
+    });
   </script>
 </body>
 </html>
