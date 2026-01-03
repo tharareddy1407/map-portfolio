@@ -4,124 +4,216 @@
   <meta charset="utf-8" />
   <title>USA Map Portfolio</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
-    html, body { height: 100%; margin: 0; }
+    :root{
+      --bg: #ffffff;
+      --text: #111111;
+      --muted: #555555;
+      --card: #ffffff;
+      --shadow: 0 12px 30px rgba(0,0,0,.18);
+      --pill: #ffffff;
+      --pillText: #111111;
+      --border: rgba(0,0,0,.08);
+    }
+    body.dark{
+      --bg: #0b1220;
+      --text: #e7eefc;
+      --muted: rgba(231,238,252,.75);
+      --card: #121a2b;
+      --shadow: 0 12px 30px rgba(0,0,0,.55);
+      --pill: #121a2b;
+      --pillText: #e7eefc;
+      --border: rgba(255,255,255,.10);
+    }
+
+    html, body { height: 100%; margin: 0; background: var(--bg); }
     #map { height: 100vh; width: 100vw; }
 
-    /* Top bar */
+    /* Top bar (search + buttons) */
     .topbar{
       position: fixed;
       top: env(safe-area-inset-top, 10px);
-      left: 12px;
-      right: 12px;
+      left: 12px; right: 12px;
       z-index: 9999;
       display: flex;
       gap: 10px;
-      justify-content: flex-end;
-      pointer-events: none;
+      align-items: center;
+      justify-content: space-between;
       font-family: Arial, sans-serif;
+      pointer-events: none;
     }
-    .topbar a{
-      pointer-events: auto;
-      background: #fff;
+    .left, .right { display:flex; gap:10px; align-items:center; pointer-events:auto; flex-wrap: wrap; }
+    .pill{
+      background: var(--pill);
+      color: var(--pillText);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
       padding: 10px 12px;
-      border-radius: 12px;
-      text-decoration: none;
-      color: #111;
-      box-shadow: 0 10px 25px rgba(0,0,0,.15);
       font-size: 14px;
+      text-decoration: none;
       white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
     }
+    .pill:active{ transform: translateY(1px); }
 
-    /* Panel (desktop) */
+    .search{
+      display:flex; gap:8px; align-items:center;
+      padding: 8px 10px;
+    }
+    .search input{
+      border: none;
+      outline: none;
+      background: transparent;
+      color: var(--pillText);
+      width: 220px;
+      font-size: 14px;
+    }
+    .search small{ color: var(--muted); }
+
+    /* Panel */
     #panel{
       position: fixed;
-      top: calc(env(safe-area-inset-top, 10px) + 56px);
+      top: calc(env(safe-area-inset-top, 10px) + 64px);
       left: 12px;
       z-index: 9999;
-      width: 360px;
+      width: 380px;
       max-width: calc(100% - 24px);
-      background: #fff;
-      border-radius: 14px;
+      background: var(--card);
+      color: var(--text);
+      border-radius: 16px;
       padding: 14px;
-      box-shadow: 0 12px 30px rgba(0,0,0,.18);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
       font-family: Arial, sans-serif;
       display: none;
     }
     #panel h3{ margin: 0 0 8px; font-size: 18px; }
     #panel .close{
-      float:right;
-      cursor:pointer;
-      font-weight: bold;
-      font-size: 18px;
-      padding: 4px 8px;
-      border-radius: 10px;
+      float:right; cursor:pointer; font-weight:bold;
+      font-size:18px; padding:4px 8px; border-radius:10px;
+      color: var(--text);
     }
-    #panel .close:active{ background: #f0f0f0; }
-    #panel .meta{ color:#555; font-size: 13px; margin-bottom: 10px; }
+    #panel .meta{ color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+    #panel a{ color: inherit; }
     #panel ul{ margin: 8px 0 0 18px; }
 
-    /* Mobile: bottom sheet */
+    /* Timeline (only shown for Experience) */
+    #timelineWrap{
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display:none;
+    }
+    #timelineHeader{
+      display:flex;
+      justify-content: space-between;
+      align-items:center;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    #timelineYear{
+      color: var(--text);
+      font-weight: 700;
+      font-size: 12px;
+    }
+    input[type="range"]{
+      width: 100%;
+      accent-color: #2d7ff9;
+    }
+
+    /* Mobile bottom sheet */
     @media (max-width: 768px){
+      .topbar{ justify-content: center; }
+      .search input{ width: 160px; }
       #panel{
-        left: 0;
-        right: 0;
-        top: auto;
-        bottom: 0;
-        width: auto;
-        max-width: none;
-        border-radius: 16px 16px 0 0;
+        left: 0; right: 0;
+        top: auto; bottom: 0;
+        width: auto; max-width: none;
+        border-radius: 18px 18px 0 0;
         padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
         box-shadow: 0 -10px 30px rgba(0,0,0,.18);
       }
-      .topbar{
-        justify-content: center;
-        flex-wrap: wrap;
-      }
     }
 
-    /* Push Leaflet controls below notch/topbar */
+    /* Leaflet controls below topbar */
     .leaflet-top.leaflet-left{
-      margin-top: calc(env(safe-area-inset-top, 10px) + 60px);
+      margin-top: calc(env(safe-area-inset-top, 10px) + 72px);
     }
 
-    /* Travel icon element */
     .travel-emoji{
       font-size: 24px;
       transform: translate(-50%,-50%);
       will-change: transform;
     }
+
+    /* Small KPI grid */
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:10px;
+      margin-top: 10px;
+    }
+    .kpi{
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(0,0,0,0.02);
+    }
+    body.dark .kpi{ background: rgba(255,255,255,0.04); }
+    .kpi .num{ font-size: 18px; font-weight: 800; }
+    .kpi .lbl{ font-size: 12px; color: var(--muted); margin-top: 4px; }
   </style>
 </head>
 
 <body>
-  <!-- Top links -->
+  <!-- Top controls -->
   <div class="topbar">
-    <a href="https://github.com/YOUR_GITHUB" target="_blank" rel="noopener">GitHub</a>
-    <a href="https://linkedin.com/in/YOUR_LINKEDIN" target="_blank" rel="noopener">LinkedIn</a>
-    <a href="resume.pdf" target="_blank" rel="noopener">Resume</a>
+    <div class="left">
+      <div class="pill search">
+        🔎 <input id="searchBox" type="text" placeholder="Search: aws, spark, sql..." />
+        <small id="searchHint"></small>
+      </div>
+      <div class="pill" id="tourBtn">▶ Tour</div>
+      <div class="pill" id="heatBtn">🔥 Heatmap</div>
+    </div>
+
+    <div class="right">
+      <div class="pill" id="modeBtn">👔 Recruiter</div>
+      <div class="pill" id="themeBtn">🌙 Dark</div>
+      <a class="pill" href="https://github.com/YOUR_GITHUB" target="_blank" rel="noopener">GitHub</a>
+      <a class="pill" href="https://linkedin.com/in/YOUR_LINKEDIN" target="_blank" rel="noopener">LinkedIn</a>
+      <a class="pill" href="resume.pdf" target="_blank" rel="noopener">Resume</a>
+    </div>
   </div>
 
-  <!-- Side/Bottom panel -->
+  <!-- Panel -->
   <div id="panel">
     <span class="close" onclick="hidePanel()">×</span>
     <h3 id="panelTitle"></h3>
     <div class="meta" id="panelMeta"></div>
     <div id="panelBody"></div>
+
+    <!-- Timeline controls (Experience) -->
+    <div id="timelineWrap">
+      <div id="timelineHeader">
+        <span>Experience timeline</span>
+        <span id="timelineYear">—</span>
+      </div>
+      <input id="timeline" type="range" min="0" max="0" step="1" value="0" />
+    </div>
   </div>
 
-  <!-- Map container -->
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // ---------------- MAP SETUP ----------------
+    // ---------------- MAP ----------------
     const map = L.map('map', {
       zoomControl: true,
       tap: true,
@@ -129,85 +221,255 @@
       scrollWheelZoom: false
     }).setView([39.5, -98.35], 4);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    // basemap toggles for dark mode
+    const lightTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap &copy; CARTO',
       maxZoom: 18
     }).addTo(map);
 
-    // ---------------- DESTINATIONS ----------------
+    const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 18
+    });
+
+    // ---------------- DATA ----------------
+    // Keywords power the Search feature
     const places = {
       projects: {
         name: "Projects",
         city: "Los Angeles, CA",
         latlng: [34.0522, -118.2437],
-        body: `
-          <p><b>Featured work</b></p>
+        keywords: ["projects","github","demo","etl","pipeline","airflow","dbt","spark","aws","sql","python"],
+        recruiterBody: `
+          <p><b>Impact-focused projects</b></p>
           <ul>
-            <li>ETL Pipeline (Python + Spark + AWS)</li>
-            <li>Streaming Analytics (Kafka + Spark)</li>
-            <li>SQL KPI Dashboard (Power BI)</li>
+            <li>Built reliable data pipelines and automated reporting</li>
+            <li>Improved data quality and reduced manual effort</li>
+            <li>Delivered dashboards for faster decisions</li>
           </ul>
           <p><a target="_blank" rel="noopener" href="https://github.com/YOUR_GITHUB">Open GitHub</a></p>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="40">0</div><div class="lbl">Pipelines</div></div>
+            <div class="kpi"><div class="num" data-count="1200">0</div><div class="lbl">Datasets</div></div>
+            <div class="kpi"><div class="num" data-count="35">0</div><div class="lbl">% Cost ↓</div></div>
+          </div>
+        `,
+        engineerBody: `
+          <p><b>Featured work</b></p>
+          <ul>
+            <li>ETL/ELT: Python, Spark, Airflow, AWS Glue/Lambda</li>
+            <li>Streaming: Kafka/Kinesis style patterns, Spark Structured Streaming</li>
+            <li>Analytics: SQL models + BI dashboards</li>
+          </ul>
+          <p><a target="_blank" rel="noopener" href="https://github.com/YOUR_GITHUB">Open GitHub</a></p>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="99">0</div><div class="lbl">% SLA</div></div>
+            <div class="kpi"><div class="num" data-count="12">0</div><div class="lbl">Workflows</div></div>
+            <div class="kpi"><div class="num" data-count="8">0</div><div class="lbl">Tools</div></div>
+          </div>
         `
       },
+
       resume: {
         name: "Resume",
         city: "Denver, CO",
         latlng: [39.7392, -104.9903],
-        body: `
-          <p><b>Resume highlights</b></p>
+        keywords: ["resume","cv","experience","summary","skills"],
+        recruiterBody: `
+          <p><b>Quick highlights</b></p>
           <ul>
-            <li>Cloud data pipelines (AWS)</li>
-            <li>Spark performance + cost tuning</li>
-            <li>Analytics-ready datasets</li>
+            <li>Data pipelines and reporting that stakeholders trust</li>
+            <li>Strong ownership: requirements → delivery → support</li>
+            <li>Clear communication and measurable outcomes</li>
           </ul>
           <p><a target="_blank" rel="noopener" href="resume.pdf">Open Resume</a></p>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="3">0</div><div class="lbl">Key roles</div></div>
+            <div class="kpi"><div class="num" data-count="60">0</div><div class="lbl">% Faster</div></div>
+            <div class="kpi"><div class="num" data-count="25">0</div><div class="lbl">Partners</div></div>
+          </div>
+        `,
+        engineerBody: `
+          <p><b>Resume (technical)</b></p>
+          <ul>
+            <li>Python, SQL, Spark</li>
+            <li>AWS: S3, Glue, Lambda, Redshift</li>
+            <li>Orchestration + observability</li>
+          </ul>
+          <p><a target="_blank" rel="noopener" href="resume.pdf">Open Resume</a></p>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="7">0</div><div class="lbl">Systems</div></div>
+            <div class="kpi"><div class="num" data-count="15">0</div><div class="lbl">Dashboards</div></div>
+            <div class="kpi"><div class="num" data-count="30">0</div><div class="lbl">% Latency ↓</div></div>
+          </div>
         `
       },
+
       skills: {
         name: "Tech Skills",
         city: "Dallas, TX",
         latlng: [32.7767, -96.7970],
-        body: `
-          <p><b>Core stack</b></p>
+        keywords: ["skills","aws","python","sql","spark","airflow","databricks","snowflake","powerbi","tableau"],
+        recruiterBody: `
+          <p><b>Core strengths</b></p>
           <ul>
-            <li>Python, SQL</li>
-            <li>AWS: S3, Glue, Lambda, Redshift</li>
-            <li>Spark, Airflow</li>
-            <li>Power BI / Tableau</li>
+            <li>Fast problem-solving + clean delivery</li>
+            <li>Data reliability, automation, and reporting</li>
+            <li>Collaboration with non-technical partners</li>
           </ul>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="10">0</div><div class="lbl">Core skills</div></div>
+            <div class="kpi"><div class="num" data-count="5">0</div><div class="lbl">Cloud areas</div></div>
+            <div class="kpi"><div class="num" data-count="4">0</div><div class="lbl">BI tools</div></div>
+          </div>
+        `,
+        engineerBody: `
+          <p><b>Stack</b></p>
+          <ul>
+            <li>Python, SQL, Spark</li>
+            <li>AWS: S3, Glue, Lambda, Redshift</li>
+            <li>Airflow orchestration + monitoring</li>
+            <li>BI: Power BI / Tableau</li>
+          </ul>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="120">0</div><div class="lbl">SQL queries</div></div>
+            <div class="kpi"><div class="num" data-count="18">0</div><div class="lbl">Jobs</div></div>
+            <div class="kpi"><div class="num" data-count="6">0</div><div class="lbl">Services</div></div>
+          </div>
         `
       },
+
       experience: {
         name: "Experience",
         city: "New York, NY",
         latlng: [40.7128, -74.0060],
-        body: `
-          <p><b>Recent roles</b></p>
-          <ul>
-            <li>Senior Data Engineer — (Company)</li>
-            <li>Data Engineer — (Company)</li>
-            <li>Data Engineer — (Company)</li>
-          </ul>
-          <p>Click other pins to explore.</p>
+        keywords: ["experience","timeline","roles","work","impact"],
+        recruiterBody: `
+          <p><b>Experience</b></p>
+          <p>Use the timeline slider below to explore roles and outcomes.</p>
+        `,
+        engineerBody: `
+          <p><b>Experience</b></p>
+          <p>Use the timeline slider below to explore roles, tech stack, and results.</p>
         `
       },
+
       contact: {
         name: "Contact Me",
         city: "Atlanta, GA",
         latlng: [33.7490, -84.3880],
-        body: `
+        keywords: ["contact","email","linkedin","github"],
+        recruiterBody: `
           <p><b>Let’s connect</b></p>
           <ul>
-            <li>Email: yourname@email.com</li>
+            <li>Email: <a href="mailto:yourname@email.com">yourname@email.com</a></li>
             <li>LinkedIn: <a target="_blank" rel="noopener" href="https://linkedin.com/in/YOUR_LINKEDIN">Profile</a></li>
             <li>GitHub: <a target="_blank" rel="noopener" href="https://github.com/YOUR_GITHUB">Repos</a></li>
+          </ul>
+        `,
+        engineerBody: `
+          <p><b>Contact</b></p>
+          <ul>
+            <li>Email: <a href="mailto:yourname@email.com">yourname@email.com</a></li>
+            <li>GitHub: <a target="_blank" rel="noopener" href="https://github.com/YOUR_GITHUB">Source + Demos</a></li>
+            <li>LinkedIn: <a target="_blank" rel="noopener" href="https://linkedin.com/in/YOUR_LINKEDIN">Profile</a></li>
           </ul>
         `
       }
     };
 
-    // Pin colors
+    // Timeline stops (2) – tie to slider
+    // Replace with your real roles/cities if you want.
+    const experienceStops = [
+      {
+        year: "2019–2020",
+        city: "Miami, FL",
+        latlng: [25.7617, -80.1918],
+        recruiterBody: `
+          <p><b>Role: Analyst / Ops</b></p>
+          <ul>
+            <li>Automated reporting and reduced manual checks</li>
+            <li>Improved data consistency for stakeholders</li>
+          </ul>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="20">0</div><div class="lbl">Reports</div></div>
+            <div class="kpi"><div class="num" data-count="45">0</div><div class="lbl">% Time ↓</div></div>
+            <div class="kpi"><div class="num" data-count="12">0</div><div class="lbl">Partners</div></div>
+          </div>
+        `,
+        engineerBody: `
+          <p><b>Role: Data / Reporting</b></p>
+          <ul>
+            <li>SQL + Excel automation, basic ETL patterns</li>
+            <li>Standardized metrics + reporting logic</li>
+          </ul>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="80">0</div><div class="lbl">SQL jobs</div></div>
+            <div class="kpi"><div class="num" data-count="10">0</div><div class="lbl">Pipelines</div></div>
+            <div class="kpi"><div class="num" data-count="3">0</div><div class="lbl">Systems</div></div>
+          </div>
+        `
+      },
+      {
+        year: "2021–2023",
+        city: "Charlotte, NC",
+        latlng: [35.2271, -80.8431],
+        recruiterBody: `
+          <p><b>Role: Data Engineering</b></p>
+          <ul>
+            <li>Scaled pipelines and improved data reliability</li>
+            <li>Delivered faster reporting for business users</li>
+          </ul>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="25">0</div><div class="lbl">Pipelines</div></div>
+            <div class="kpi"><div class="num" data-count="60">0</div><div class="lbl">% Faster</div></div>
+            <div class="kpi"><div class="num" data-count="18">0</div><div class="lbl">Consumers</div></div>
+          </div>
+        `,
+        engineerBody: `
+          <p><b>Role: Data Engineering</b></p>
+          <ul>
+            <li>Spark ETL + cloud storage + orchestration</li>
+            <li>Monitoring + retries + performance tuning</li>
+          </ul>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="1200">0</div><div class="lbl">Jobs/day</div></div>
+            <div class="kpi"><div class="num" data-count="30">0</div><div class="lbl">% Cost ↓</div></div>
+            <div class="kpi"><div class="num" data-count="99">0</div><div class="lbl">% SLA</div></div>
+          </div>
+        `
+      },
+      {
+        year: "2024–Now",
+        city: "Dallas, TX",
+        latlng: [32.7767, -96.7970],
+        recruiterBody: `
+          <p><b>Role: Senior (Current)</b></p>
+          <ul>
+            <li>Owned delivery end-to-end with measurable impact</li>
+            <li>Aligned stakeholders and improved speed of execution</li>
+          </ul>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="8">0</div><div class="lbl">Streams</div></div>
+            <div class="kpi"><div class="num" data-count="35">0</div><div class="lbl">% Cost ↓</div></div>
+            <div class="kpi"><div class="num" data-count="5">0</div><div class="lbl">Teams</div></div>
+          </div>
+        `,
+        engineerBody: `
+          <p><b>Role: Senior (Current)</b></p>
+          <ul>
+            <li>Python/Spark pipelines + cloud optimization</li>
+            <li>Governance + quality checks + observability</li>
+          </ul>
+          <div class="kpis">
+            <div class="kpi"><div class="num" data-count="1000">0</div><div class="lbl">Datasets</div></div>
+            <div class="kpi"><div class="num" data-count="12">0</div><div class="lbl">Workflows</div></div>
+            <div class="kpi"><div class="num" data-count="6">0</div><div class="lbl">Services</div></div>
+          </div>
+        `
+      }
+    ];
+
     const pinColors = {
       projects: "#e74c3c",
       resume: "#3498db",
@@ -216,26 +478,65 @@
       contact: "#f1c40f"
     };
 
+    // ---------------- UI STATE ----------------
+    let viewMode = "recruiter"; // recruiter | engineer
+    let isDark = false;
+    let heatOn = false;
+    let tourOn = false;
+    let tourTimer = null;
+
     // ---------------- PANEL ----------------
-    function openPanel(key){
+    function openPanel(key, extraHtml = null){
       const p = places[key];
       document.getElementById('panelTitle').innerText = p.name;
       document.getElementById('panelMeta').innerText = p.city;
-      document.getElementById('panelBody').innerHTML = p.body;
+
+      const base = (viewMode === "recruiter") ? p.recruiterBody : p.engineerBody;
+      document.getElementById('panelBody').innerHTML = (extraHtml !== null) ? extraHtml : base;
+
       document.getElementById('panel').style.display = 'block';
+
+      // timeline visible only when Experience is selected
+      const tw = document.getElementById('timelineWrap');
+      tw.style.display = (key === "experience") ? "block" : "none";
+
+      // animate counters if present
+      animateCountersInPanel();
     }
 
     function hidePanel(){
       document.getElementById('panel').style.display = 'none';
     }
 
-    // ---------------- TRAVEL ANIMATION ----------------
-    // Change this to "plane" if you want ✈️
-    const travelMode = "car"; // "car" | "plane"
+    // KPI counters animation
+    function animateCountersInPanel(){
+      const nums = document.querySelectorAll('#panel .num[data-count]');
+      nums.forEach(el => {
+        const target = Number(el.getAttribute('data-count'));
+        const start = 0;
+        const dur = 900;
+        const t0 = performance.now();
+        function tick(now){
+          const t = Math.min((now - t0) / dur, 1);
+          const val = Math.round(start + (target - start) * (1 - Math.pow(1 - t, 3)));
+          el.textContent = val.toLocaleString();
+          if (t < 1) requestAnimationFrame(tick);
+        }
+        el.textContent = "0";
+        requestAnimationFrame(tick);
+      });
+    }
+
+    // ---------------- TRAVEL ANIMATION (CAR/PLANE) ----------------
+    // Switch emoji based on distance (car for short, plane for long)
+    function chooseTravelEmoji(from, to){
+      const lonDiff = Math.abs(from[1] - to[1]);
+      return (lonDiff > 18) ? "✈️" : "🚗";
+    }
 
     const travelIcon = L.divIcon({
       className: "",
-      html: `<div id="travelIcon" class="travel-emoji">${travelMode === "car" ? "🚗" : "✈️"}</div>`,
+      html: `<div id="travelIcon" class="travel-emoji">🚗</div>`,
       iconSize: [0, 0]
     });
 
@@ -245,21 +546,16 @@
     let routeLine = null;
     let animId = null;
 
-    // Add a curve by using a midpoint (simple + looks good)
     function buildRoute(from, to){
-      const mid = [
-        (from[0] + to[0]) / 2 + 1.0,   // curve height
-        (from[1] + to[1]) / 2
-      ];
+      // simple curve midpoint
+      const mid = [(from[0] + to[0]) / 2 + 1.0, (from[1] + to[1]) / 2];
       return [from, mid, to];
     }
 
-    // Create smooth points along the route
-    function densify(points, totalSteps = 180){
+    function densify(points, totalSteps = 210){
       const out = [];
       const segments = points.length - 1;
       const stepsPerSeg = Math.max(30, Math.floor(totalSteps / segments));
-
       for (let i = 0; i < segments; i++){
         const a = points[i], b = points[i+1];
         for (let s = 0; s < stepsPerSeg; s++){
@@ -271,42 +567,33 @@
       return out;
     }
 
-    // Rotate icon to face direction (best for plane)
     function rotateIcon(path, idx){
       const a = path[idx];
       const b = path[Math.min(idx + 1, path.length - 1)];
       const dx = b[1] - a[1];
       const dy = b[0] - a[0];
       const angle = Math.atan2(dx, dy) * (180 / Math.PI);
-
       const el = document.getElementById("travelIcon");
       if (el) el.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
     }
 
     function animateAlong(path, durationMs, onDone){
       const start = performance.now();
-
       function frame(now){
         const t = Math.min((now - start) / durationMs, 1);
         const idx = Math.floor(t * (path.length - 1));
-
         travelMarker.setLatLng(path[idx]);
         rotateIcon(path, idx);
-
         if (t < 1) animId = requestAnimationFrame(frame);
-        else {
-          animId = null;
-          onDone?.();
-        }
+        else { animId = null; onDone?.(); }
       }
-
       animId = requestAnimationFrame(frame);
     }
 
     function travelTo(targetKey){
       if (targetKey === currentKey){
         openPanel(targetKey);
-        map.flyTo(places[targetKey].latlng, 5, { duration: 0.7 });
+        map.flyTo(places[targetKey].latlng, 5, { duration: 0.6 });
         return;
       }
 
@@ -315,19 +602,23 @@
       const from = places[currentKey].latlng;
       const to = places[targetKey].latlng;
 
-      // build route
+      // set emoji based on distance
+      const el = document.getElementById("travelIcon");
+      if (el) el.textContent = chooseTravelEmoji(from, to);
+
       const route = buildRoute(from, to);
 
-      // draw route line
       if (routeLine) map.removeLayer(routeLine);
-      routeLine = L.polyline(route, { weight: 4, opacity: 0.7 }).addTo(map);
+      routeLine = L.polyline(route, {
+        weight: 5,
+        opacity: 0.85,
+        dashArray: "8,10"
+      }).addTo(map);
 
-      // zoom/pan to show route
       map.flyToBounds(routeLine.getBounds().pad(0.25), { duration: 0.8 });
 
-      // animate marker
-      const path = densify(route, 210);
-      animateAlong(path, 1600, () => {
+      const path = densify(route, 240);
+      animateAlong(path, 1700, () => {
         currentKey = targetKey;
         openPanel(targetKey);
         map.flyTo(places[targetKey].latlng, 5, { duration: 0.6 });
@@ -335,8 +626,10 @@
     }
 
     // ---------------- PINS ----------------
+    const pinLayers = {}; // store markers for search highlight
+
     Object.entries(places).forEach(([key, p]) => {
-      L.circleMarker(p.latlng, {
+      const marker = L.circleMarker(p.latlng, {
         radius: 10,
         color: "#fff",
         weight: 2,
@@ -345,17 +638,221 @@
       })
       .addTo(map)
       .bindTooltip(p.name, { direction: "top", offset: [0, -8] })
-      .on('click', () => travelTo(key)); // <-- animation trigger
+      .on('click', () => {
+        stopTourIfRunning();
+        if (key === "experience") {
+          travelTo(key);
+          setupTimeline(); // show timeline slider
+        } else {
+          travelTo(key);
+        }
+      });
+
+      pinLayers[key] = marker;
     });
+
+    // ---------------- FEATURE 2: TIMELINE SLIDER ----------------
+    function setupTimeline(){
+      const slider = document.getElementById('timeline');
+      const yearLabel = document.getElementById('timelineYear');
+
+      slider.min = 0;
+      slider.max = experienceStops.length - 1;
+      slider.value = experienceStops.length - 1;
+
+      function renderStop(idx, animateTravel = true){
+        const stop = experienceStops[idx];
+        yearLabel.textContent = stop.year;
+
+        // Build Experience panel content + include stop content
+        const base = (viewMode === "recruiter") ? places.experience.recruiterBody : places.experience.engineerBody;
+        const stopHtml = (viewMode === "recruiter") ? stop.recruiterBody : stop.engineerBody;
+        const html = `
+          ${base}
+          <p style="margin-top:10px"><b>${stop.year}</b> — ${stop.city}</p>
+          ${stopHtml}
+        `;
+        openPanel("experience", html);
+
+        // Move travel marker to the stop city
+        if (animateTravel){
+          const fromKey = currentKey; // could be experience or others
+          const from = (fromKey === "experience")
+            ? travelMarker.getLatLng()
+            : L.latLng(places[fromKey].latlng[0], places[fromKey].latlng[1]);
+          const to = stop.latlng;
+
+          // update emoji based on distance
+          const el = document.getElementById("travelIcon");
+          if (el) el.textContent = chooseTravelEmoji([from.lat, from.lng], to);
+
+          // route + animation using latlng arrays
+          const route = buildRoute([from.lat, from.lng], to);
+
+          if (routeLine) map.removeLayer(routeLine);
+          routeLine = L.polyline(route, { weight: 5, opacity: 0.85, dashArray: "8,10" }).addTo(map);
+          map.flyToBounds(routeLine.getBounds().pad(0.25), { duration: 0.8 });
+
+          const path = densify(route, 240);
+          if (animId) cancelAnimationFrame(animId);
+          animateAlong(path, 1700, () => {
+            currentKey = "experience";
+            map.flyTo(to, 5, { duration: 0.6 });
+          });
+        } else {
+          map.flyTo(stop.latlng, 5, { duration: 0.6 });
+        }
+      }
+
+      slider.oninput = () => renderStop(Number(slider.value), true);
+      renderStop(Number(slider.value), false);
+    }
+
+    // ---------------- FEATURE 3: SEARCH HIGHLIGHT ----------------
+    const searchBox = document.getElementById('searchBox');
+    const searchHint = document.getElementById('searchHint');
+
+    function normalize(s){ return (s || "").toLowerCase().trim(); }
+
+    function applySearch(q){
+      q = normalize(q);
+      if (!q){
+        searchHint.textContent = "";
+        Object.entries(pinLayers).forEach(([k, m]) => m.setStyle({ radius: 10, fillOpacity: 1 }));
+        return;
+      }
+
+      let matches = 0;
+      Object.entries(places).forEach(([k, p]) => {
+        const hit = p.keywords.some(kw => kw.includes(q)) || p.name.toLowerCase().includes(q);
+        if (hit){ matches++; }
+        pinLayers[k].setStyle({
+          radius: hit ? 14 : 8,
+          fillOpacity: hit ? 1 : 0.35
+        });
+      });
+
+      searchHint.textContent = `${matches} match${matches === 1 ? "" : "es"}`;
+      // If exactly 1 match, auto travel there
+      if (matches === 1){
+        const target = Object.keys(places).find(k => {
+          const p = places[k];
+          return p.keywords.some(kw => kw.includes(q)) || p.name.toLowerCase().includes(q);
+        });
+        if (target) travelTo(target);
+      }
+    }
+
+    searchBox.addEventListener('input', (e) => applySearch(e.target.value));
+
+    // ---------------- FEATURE 4: HEATMAP OVERLAY ----------------
+    // Simple overlay circles: bigger + more opaque = stronger
+    const heatLayer = L.layerGroup();
+    const heatData = [
+      { latlng: [32.7767, -96.7970], label: "AWS + SQL", radius: 48000, opacity: 0.40 },
+      { latlng: [40.7128, -74.0060], label: "Spark + Pipelines", radius: 52000, opacity: 0.35 },
+      { latlng: [34.0522, -118.2437], label: "Projects", radius: 62000, opacity: 0.30 },
+      { latlng: [33.7490, -84.3880], label: "Collaboration", radius: 52000, opacity: 0.25 }
+    ];
+
+    heatData.forEach(h => {
+      const c = L.circle(h.latlng, {
+        radius: h.radius,
+        stroke: false,
+        fillOpacity: h.opacity
+      }).bindTooltip(h.label, { direction: "top" });
+      heatLayer.addLayer(c);
+    });
+
+    function toggleHeat(){
+      heatOn = !heatOn;
+      document.getElementById('heatBtn').textContent = heatOn ? "🔥 Heatmap ON" : "🔥 Heatmap";
+      if (heatOn) heatLayer.addTo(map);
+      else map.removeLayer(heatLayer);
+    }
+
+    // ---------------- FEATURE 1: TOUR MODE ----------------
+    const tourOrder = ["resume", "projects", "skills", "experience", "contact"];
+    let tourIndex = 0;
+
+    function startTour(){
+      tourOn = true;
+      document.getElementById('tourBtn').textContent = "⏸ Tour";
+      tourIndex = 0;
+
+      function step(){
+        if (!tourOn) return;
+        const key = tourOrder[tourIndex % tourOrder.length];
+
+        if (key === "experience"){
+          travelTo("experience");
+          setupTimeline(); // shows slider + renders last stop
+        } else {
+          travelTo(key);
+        }
+
+        tourIndex++;
+        tourTimer = setTimeout(step, 3200);
+      }
+      step();
+    }
+
+    function stopTourIfRunning(){
+      if (!tourOn) return;
+      tourOn = false;
+      document.getElementById('tourBtn').textContent = "▶ Tour";
+      if (tourTimer) clearTimeout(tourTimer);
+      tourTimer = null;
+    }
+
+    function toggleTour(){
+      if (tourOn) stopTourIfRunning();
+      else startTour();
+    }
+
+    // ---------------- MODE TOGGLE (Recruiter vs Engineer) ----------------
+    function toggleMode(){
+      viewMode = (viewMode === "recruiter") ? "engineer" : "recruiter";
+      document.getElementById('modeBtn').textContent = (viewMode === "recruiter") ? "👔 Recruiter" : "🧑‍💻 Engineer";
+
+      // refresh current panel content
+      if (document.getElementById('panel').style.display === 'block'){
+        if (currentKey === "experience"){
+          setupTimeline();
+        } else {
+          openPanel(currentKey);
+        }
+      }
+    }
+
+    // ---------------- THEME TOGGLE (Light/Dark) ----------------
+    function toggleTheme(){
+      isDark = !isDark;
+      document.body.classList.toggle('dark', isDark);
+      document.getElementById('themeBtn').textContent = isDark ? "☀️ Light" : "🌙 Dark";
+
+      // swap tiles
+      if (isDark){
+        if (map.hasLayer(lightTiles)) map.removeLayer(lightTiles);
+        if (!map.hasLayer(darkTiles)) darkTiles.addTo(map);
+      } else {
+        if (map.hasLayer(darkTiles)) map.removeLayer(darkTiles);
+        if (!map.hasLayer(lightTiles)) lightTiles.addTo(map);
+      }
+    }
+
+    // ---------------- HOOK UP BUTTONS ----------------
+    document.getElementById('tourBtn').addEventListener('click', toggleTour);
+    document.getElementById('heatBtn').addEventListener('click', toggleHeat);
+    document.getElementById('modeBtn').addEventListener('click', () => { stopTourIfRunning(); toggleMode(); });
+    document.getElementById('themeBtn').addEventListener('click', toggleTheme);
+
+    // Orientation/map sizing fix
+    window.addEventListener('resize', () => setTimeout(() => map.invalidateSize(), 150));
 
     // Default open
     openPanel('resume');
     map.flyTo(places.resume.latlng, 5, { duration: 0.8 });
-
-    // Fix map sizing after orientation change
-    window.addEventListener('resize', () => {
-      setTimeout(() => map.invalidateSize(), 150);
-    });
   </script>
 </body>
 </html>
