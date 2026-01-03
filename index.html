@@ -2,9 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Map Portfolio</title>
+  <title>Map Portfolio (Fast)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <!-- MapLibre (FREE WebGL map) -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
   <style>
     :root{
@@ -15,27 +18,22 @@
     body.dark{
       --bg:#0b1220; --text:#e7eefc; --muted:rgba(231,238,252,.75); --card:#121a2b;
       --shadow:0 12px 30px rgba(0,0,0,.55);
-      --pill:#121a2b; --pillText:#e7eefc; --border:rgba(255,255,255,.12);
+      --pill:#121a2b; --pillText:#e7eefc; --border:rgba(255,255,255,.14);
     }
 
     html, body { height:100%; margin:0; background:var(--bg); }
-    #map { height:100vh; width:100vw; }
+    #map { position:fixed; inset:0; }
 
-    /* Put marker above line */
-    .leaflet-overlay-pane { z-index: 400; }
-    .leaflet-marker-pane  { z-index: 650; }
-
-    /* Top bar */
     .topbar{
-      position:fixed;
+      position: fixed;
       top: env(safe-area-inset-top, 10px);
-      left:12px; right:12px;
-      z-index:9999;
+      left: 12px; right: 12px;
+      z-index: 10;
       display:flex; justify-content:space-between; gap:10px;
       font-family: Arial, sans-serif;
       pointer-events:none;
     }
-    .topbar .left,.topbar .right{ display:flex; gap:10px; pointer-events:auto; }
+    .left,.right{ display:flex; gap:10px; flex-wrap:wrap; pointer-events:auto; }
     .pill{
       background:var(--pill);
       color:var(--pillText);
@@ -46,35 +44,33 @@
       font-size:14px;
       cursor:pointer;
       user-select:none;
-      white-space:nowrap;
       text-decoration:none;
+      white-space:nowrap;
     }
     .pill:active{ transform: translateY(1px); }
 
-    /* Info panel */
     #panel{
-      position:fixed;
+      position: fixed;
       top: calc(env(safe-area-inset-top, 10px) + 64px);
-      left:12px;
-      z-index:9999;
-      width:380px;
+      left: 12px;
+      z-index: 10;
+      width: 380px;
       max-width: calc(100% - 24px);
-      background:var(--card);
-      color:var(--text);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:14px;
-      box-shadow:var(--shadow);
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: var(--shadow);
       font-family: Arial, sans-serif;
       display:none;
     }
     #panel h3{ margin:0 0 8px; font-size:18px; }
-    #panel .meta{ color:var(--muted); font-size:13px; margin-bottom:10px; }
+    #panel .meta{ color: var(--muted); font-size:13px; margin-bottom:10px; }
     #panel .close{
       float:right; cursor:pointer; font-weight:700; font-size:18px;
       padding:4px 8px; border-radius:10px;
     }
-    #panel a{ color:inherit; }
 
     @media (max-width: 768px){
       #panel{
@@ -87,25 +83,16 @@
       }
     }
 
-    /* Keep zoom buttons lower than topbar */
-    .leaflet-top.leaflet-left{ margin-top: calc(env(safe-area-inset-top, 10px) + 72px); }
-
-    /* Travel emoji marker */
-    .travel-emoji{
-      font-size: 26px;
-      transform: translate(-50%,-50%);
+    /* travel marker (DOM element on top of WebGL) */
+    .travelMarker{
+      width: 1px; height: 1px;
+      pointer-events: none;
+    }
+    .travelEmoji{
+      font-size: 28px;
+      transform: translate(-50%, -50%);
       will-change: transform;
-      pointer-events:none;
-    }
-
-    /* ✅ CSS dash animation (no JS loops) */
-    .route-line{
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      animation: dashmove 1.2s linear infinite;
-    }
-    @keyframes dashmove{
-      to { stroke-dashoffset: -22; }
+      filter: drop-shadow(0 6px 10px rgba(0,0,0,.25));
     }
   </style>
 </head>
@@ -130,97 +117,66 @@
 
   <div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // ---------- SAFE COORD FIX (lat/lng swap protection) ----------
-    function normalizeLatLng(ll){
-      let a = Number(ll[0]), b = Number(ll[1]);
-      // If first is longitude-like (>90) and second latitude-like (<=90), swap.
-      if (Math.abs(a) > 90 && Math.abs(b) <= 90) [a, b] = [b, a];
-      a = Math.max(-90, Math.min(90, a));
-      b = Math.max(-180, Math.min(180, b));
-      return [a, b]; // [lat, lng]
+    // ----------------- FREE BASEMAP STYLES (no API key) -----------------
+    // CARTO vector style JSON (free, no key)
+    const STYLE_LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+    const STYLE_DARK  = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+
+    // ----------------- HELPERS -----------------
+    // MapLibre uses [lng, lat]. This fixes if you accidentally put [lat, lng]
+    function normalizeLngLat(ll){
+      let a = Number(ll[0]), b = Number(ll[1]); // maybe lng,lat OR lat,lng
+      const looksLikeLatLng = (Math.abs(a) <= 90 && Math.abs(b) > 90);
+      if (looksLikeLatLng) [a,b] = [b,a]; // swap to lng,lat
+      a = Math.max(-180, Math.min(180, a));
+      b = Math.max(-90,  Math.min(90,  b));
+      return [a,b];
     }
 
-    // ---------- STYLE SCALE ----------
-    function routeWeight(z){
-      if (z <= 4) return 2;
-      if (z === 5) return 3;
-      if (z === 6) return 4;
-      if (z === 7) return 5;
-      return 6;
-    }
-    function routeDash(z){
-      if (z <= 4) return "8 10";
-      if (z <= 6) return "10 10";
-      return "12 10";
-    }
-    function pinRadius(z){
-      if (z <= 4) return 6;
-      if (z === 5) return 7;
-      if (z === 6) return 8;
-      return 10;
-    }
-
-    function densify(points, stepsPerSeg=220){
-      const out = [];
-      for (let i=0; i<points.length-1; i++){
-        const a = points[i], b = points[i+1];
-        for (let s=0; s<stepsPerSeg; s++){
-          const t = s/stepsPerSeg;
-          out.push([a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t]);
-        }
+    function densify(from, to, steps = 260){
+      const pts = [];
+      for (let i=0; i<=steps; i++){
+        const t = i/steps;
+        pts.push([ from[0] + (to[0]-from[0])*t, from[1] + (to[1]-from[1])*t ]);
       }
-      out.push(points[points.length-1]);
-      return out;
+      return pts;
     }
 
     function chooseEmoji(from, to){
-      const lonDiff = Math.abs(from[1] - to[1]);
+      const lonDiff = Math.abs(from[0]-to[0]);
       return lonDiff > 18 ? "✈️" : "🚗";
     }
 
-    // ---------- MAP ----------
-    const usaBounds = L.latLngBounds([[24.5, -125.0], [49.8, -66.5]]);
+    // USA bounds (rough)
+    const USA_BOUNDS = [
+      [-125.0, 24.5],  // SW [lng,lat]
+      [-66.5,  49.8]   // NE [lng,lat]
+    ];
 
-    const map = L.map("map", {
-      zoomControl: true,
-      worldCopyJump: false,
-      maxBounds: usaBounds.pad(0.15),
-      maxBoundsViscosity: 1.0,
-      minZoom: 4,
-      maxZoom: 10,
-      inertia: true
-    });
+    // ----------------- DATA -----------------
+    const places = {
+      resume:     { name:"Resume",      city:"Denver, CO",      ll: normalizeLngLat([-104.9903, 39.7392]), color:"#3498db",
+        html:`<ul><li>Highlights</li><li>Download link</li></ul>` },
+      projects:   { name:"Projects",    city:"Los Angeles, CA", ll: normalizeLngLat([-118.2437, 34.0522]), color:"#e74c3c",
+        html:`<ul><li>Map Portfolio</li><li>Other projects</li></ul>` },
+      skills:     { name:"Tech Skills", city:"Dallas, TX",      ll: normalizeLngLat([-96.7970, 32.7767]),  color:"#2ecc71",
+        html:`<ul><li>Python</li><li>SQL</li><li>AWS</li></ul>` },
+      experience: { name:"Experience",  city:"New York, NY",    ll: normalizeLngLat([-74.0060, 40.7128]),  color:"#9b59b6",
+        html:`<ul><li>Role 1</li><li>Role 2</li></ul>` },
+      contact:    { name:"Contact Me",  city:"Atlanta, GA",     ll: normalizeLngLat([-84.3880, 33.7490]),  color:"#f1c40f",
+        html:`<ul>
+          <li>Email: <a href="mailto:yourname@email.com">yourname@email.com</a></li>
+          <li>GitHub: <a target="_blank" rel="noopener" href="https://github.com/tharareddy1407">Profile</a></li>
+        </ul>` }
+    };
 
-    const lightTiles = L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-      { attribution:"&copy; OpenStreetMap &copy; CARTO", maxZoom:18, noWrap:true }
-    ).addTo(map);
-
-    const darkTiles = L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      { attribution:"&copy; OpenStreetMap &copy; CARTO", maxZoom:18, noWrap:true }
-    );
-
-    map.fitBounds(usaBounds, { animate:false });
-
-    function refreshMapSize(){
-      setTimeout(() => map.invalidateSize(true), 150);
-    }
-    window.addEventListener("resize", refreshMapSize);
-    window.addEventListener("orientationchange", refreshMapSize);
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshMapSize(); });
-
-    // ---------- PANEL ----------
+    // ----------------- PANEL -----------------
     const panel = document.getElementById("panel");
     const panelTitle = document.getElementById("panelTitle");
     const panelMeta  = document.getElementById("panelMeta");
     const panelBody  = document.getElementById("panelBody");
-    document.getElementById("closePanel").addEventListener("click", () => {
-      panel.style.display = "none";
-      refreshMapSize();
-    });
+    document.getElementById("closePanel").onclick = () => panel.style.display = "none";
 
     function openPanel(key){
       const p = places[key];
@@ -228,177 +184,175 @@
       panelMeta.textContent  = p.city;
       panelBody.innerHTML    = p.html;
       panel.style.display = "block";
-      refreshMapSize();
     }
 
-    // ---------- DESTINATIONS ----------
-    const places = {
-      resume:     { name:"Resume",      city:"Denver, CO",      latlng: normalizeLatLng([39.7392, -104.9903]), color:"#3498db",
-        html:`<ul><li>Highlights</li><li>Download link</li></ul>` },
-      projects:   { name:"Projects",    city:"Los Angeles, CA", latlng: normalizeLatLng([34.0522, -118.2437]), color:"#e74c3c",
-        html:`<ul><li>Map Portfolio</li><li>Other projects</li></ul>` },
-      skills:     { name:"Tech Skills", city:"Dallas, TX",      latlng: normalizeLatLng([32.7767, -96.7970]),  color:"#2ecc71",
-        html:`<ul><li>Python</li><li>SQL</li><li>AWS</li></ul>` },
-      experience: { name:"Experience",  city:"New York, NY",    latlng: normalizeLatLng([40.7128, -74.0060]),  color:"#9b59b6",
-        html:`<ul><li>Role 1</li><li>Role 2</li></ul>` },
-      contact:    { name:"Contact Me",  city:"Atlanta, GA",     latlng: normalizeLatLng([33.7490, -84.3880]),  color:"#f1c40f",
-        html:`<ul>
-          <li>Email: <a href="mailto:yourname@email.com">yourname@email.com</a></li>
-          <li>GitHub: <a target="_blank" rel="noopener" href="https://github.com/tharareddy1407">Profile</a></li>
-        </ul>` }
-    };
-
-    // ---------- TRAVEL MARKER ----------
-    const travelIcon = L.divIcon({
-      className:"",
-      html:`<div id="travelIcon" class="travel-emoji">🚗</div>`,
-      iconSize:[0,0]
+    // ----------------- MAP INIT -----------------
+    let isDark = false;
+    const map = new maplibregl.Map({
+      container: "map",
+      style: STYLE_LIGHT,
+      center: [-98.5, 39.8],
+      zoom: 4.2,
+      minZoom: 4,
+      maxZoom: 10,
+      maxBounds: USA_BOUNDS,
+      attributionControl: true
     });
 
-    let currentKey = "resume";
-    let travelMarker = L.marker(places[currentKey].latlng, {
-      icon: travelIcon,
-      interactive: false,
-      keyboard: false
-    }).addTo(map);
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
 
-    let routeLine = null;
-    let animId = null;
-    let travelLock = false; // prevents stuck overlaps
+    window.addEventListener("resize", () => map.resize());
+    window.addEventListener("orientationchange", () => setTimeout(() => map.resize(), 150));
 
-    function unlockMap(){
-      // hard re-enable (fix "map stuck")
-      map.dragging.enable();
-      map.scrollWheelZoom.enable();
-      map.doubleClickZoom.enable();
-      map.touchZoom.enable();
-      map.boxZoom.enable();
-      map.keyboard.enable();
-      if (map.tap) map.tap.enable();
+    // ----------------- SOURCES + LAYERS -----------------
+    const DEST_SOURCE = "destinations";
+    const ROUTE_SOURCE = "route";
+
+    function buildDestGeoJSON(){
+      return {
+        type: "FeatureCollection",
+        features: Object.entries(places).map(([key,p]) => ({
+          type:"Feature",
+          geometry:{ type:"Point", coordinates: p.ll },
+          properties:{ key, name:p.name, city:p.city, color:p.color }
+        }))
+      };
     }
+
+    function setRoute(from, to){
+      const geo = {
+        type:"FeatureCollection",
+        features:[{
+          type:"Feature",
+          geometry:{ type:"LineString", coordinates:[from, to] },
+          properties:{}
+        }]
+      };
+      map.getSource(ROUTE_SOURCE).setData(geo);
+    }
+
+    // Dash “animation” (fast + stable): rotate between dash patterns
+    let dashTick = 0;
+    let dashTimer = null;
+    const dashPatterns = [
+      [2, 2],
+      [3, 2],
+      [4, 2],
+      [3, 3]
+    ];
+    function startDash(){
+      stopDash();
+      dashTimer = setInterval(() => {
+        dashTick = (dashTick + 1) % dashPatterns.length;
+        if (map.getLayer("route-line")) {
+          map.setPaintProperty("route-line", "line-dasharray", dashPatterns[dashTick]);
+        }
+      }, 180);
+    }
+    function stopDash(){
+      if (dashTimer) clearInterval(dashTimer);
+      dashTimer = null;
+    }
+
+    // ----------------- TRAVEL MARKER (DOM) -----------------
+    const travelEl = document.createElement("div");
+    travelEl.className = "travelMarker";
+    const travelEmoji = document.createElement("div");
+    travelEmoji.className = "travelEmoji";
+    travelEmoji.textContent = "🚗";
+    travelEl.appendChild(travelEmoji);
+
+    const travelMarker = new maplibregl.Marker({ element: travelEl })
+      .setLngLat(places.resume.ll)
+      .addTo(map);
+
+    function rotateEmoji(from, to){
+      // angle based on lon/lat delta
+      const dx = to[0] - from[0];
+      const dy = to[1] - from[1];
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      travelEmoji.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+    }
+
+    // ----------------- TRAVEL LOGIC (no freeze) -----------------
+    let currentKey = "resume";
+    let animRaf = null;
+    let traveling = false;
 
     function cancelTravel(){
-      if (animId) cancelAnimationFrame(animId);
-      animId = null;
-      travelLock = false;
-      unlockMap();
-    }
-
-    function rotateEmoji(path, idx){
-      const a = path[idx];
-      const b = path[Math.min(idx+1, path.length-1)];
-      const dx = b[1]-a[1];
-      const dy = b[0]-a[0];
-      const angle = Math.atan2(dx, dy) * (180/Math.PI);
-      const el = document.getElementById("travelIcon");
-      if (el) el.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
-    }
-
-    function animateAlong(path, durationMs, done){
-      const t0 = performance.now();
-      const last = path.length - 1;
-      const ease = t => 1 - Math.pow(1 - t, 3);
-
-      function step(now){
-        const t = Math.min((now - t0) / durationMs, 1);
-        const idx = Math.min(Math.floor(ease(t) * last), last);
-        travelMarker.setLatLng(path[idx]);
-        rotateEmoji(path, idx);
-        if (t < 1) animId = requestAnimationFrame(step);
-        else { animId = null; done?.(); }
-      }
-      animId = requestAnimationFrame(step);
-    }
-
-    function panSmoothTo(latlng){
-      // Stable camera movement (NO fitBounds spam)
-      map.panTo(latlng, { animate:true, duration:0.6 });
+      if (animRaf) cancelAnimationFrame(animRaf);
+      animRaf = null;
+      traveling = false;
     }
 
     function travelTo(key){
       if (!places[key]) return;
 
-      // if same point, just open
-      if (key === currentKey){
+      // same pin: open panel
+      if (key === currentKey && !traveling) {
         openPanel(key);
         return;
       }
 
-      // safety: if already traveling, cancel and restart clean
-      if (travelLock) cancelTravel();
-      travelLock = true;
+      // hard reset
+      cancelTravel();
+      stopDash();
 
-      const from = places[currentKey].latlng;
-      const to   = places[key].latlng;
+      traveling = true;
 
-      // Update current key immediately (prevents tour deadlocks)
-      currentKey = key;
+      const from = places[currentKey].ll;
+      const to   = places[key].ll;
 
-      // Emoji
-      const el = document.getElementById("travelIcon");
-      if (el) el.textContent = chooseEmoji(from, to);
+      // update emoji type
+      travelEmoji.textContent = chooseEmoji(from, to);
 
-      // Remove old line
-      if (routeLine) map.removeLayer(routeLine);
+      // set route line
+      setRoute(from, to);
+      startDash();
 
-      const z = map.getZoom();
-      routeLine = L.polyline([from, to], {
-        weight: routeWeight(z),
-        opacity: 0.95,
-        dashArray: routeDash(z),
-        className: "route-line"
-      }).addTo(map);
-
-      // Camera: pan (stable) instead of fitBounds (causes freeze)
-      panSmoothTo(to);
-
-      // Animate on same route
-      const path = densify([from, to], 240);
-
-      // hard timeout safety (never stuck)
-      const failsafe = setTimeout(() => {
-        travelLock = false;
-        unlockMap();
-      }, 4000);
-
-      animateAlong(path, 1400, () => {
-        clearTimeout(failsafe);
-        travelLock = false;
-        unlockMap();
-        openPanel(key);
+      // smooth camera (stable, no fitBounds)
+      map.easeTo({
+        center: to,
+        duration: 700,
+        zoom: Math.max(map.getZoom(), 5)
       });
+
+      // animate marker
+      const path = densify(from, to, 260);
+      const start = performance.now();
+      const duration = 1400;
+
+      const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+      function frame(now){
+        const t = Math.min((now - start) / duration, 1);
+        const idx = Math.min(Math.floor(easeOutCubic(t) * (path.length - 1)), path.length - 1);
+
+        const pos = path[idx];
+        travelMarker.setLngLat(pos);
+
+        // rotate forward
+        rotateEmoji(path[Math.max(idx-1,0)], pos);
+
+        if (t < 1) {
+          animRaf = requestAnimationFrame(frame);
+        } else {
+          animRaf = null;
+          traveling = false;
+          currentKey = key;
+          openPanel(key);
+        }
+      }
+
+      // update currentKey early to avoid tour deadlocks
+      currentKey = key;
+      animRaf = requestAnimationFrame(frame);
     }
 
-    // Update line + pins on zoom (prevents giant stuff when zoomed out)
-    const pins = {};
-    function rescale(){
-      const z = map.getZoom();
-      Object.values(pins).forEach(m => m.setStyle({ radius: pinRadius(z) }));
-      if (routeLine) routeLine.setStyle({ weight: routeWeight(z), dashArray: routeDash(z) });
-      unlockMap(); // extra safety
-    }
-    map.on("zoomend", rescale);
-
-    // Create pins
-    Object.entries(places).forEach(([key, p]) => {
-      pins[key] = L.circleMarker(p.latlng, {
-        radius: pinRadius(map.getZoom()),
-        color:"#fff",
-        weight:2,
-        fillColor:p.color,
-        fillOpacity:1
-      }).addTo(map)
-        .bindTooltip(p.name, { direction:"top", offset:[0,-8] })
-        .on("click", () => {
-          stopTour();
-          travelTo(key);
-        });
-    });
-
-    // ---------- TOUR (stable) ----------
+    // ----------------- TOUR -----------------
+    const tourOrder = ["resume","projects","skills","experience","contact"];
     let tourOn = false;
     let tourTimer = null;
-    const tourOrder = ["resume","projects","skills","experience","contact"];
 
     function stopTour(){
       tourOn = false;
@@ -406,7 +360,6 @@
       if (tourTimer) clearTimeout(tourTimer);
       tourTimer = null;
     }
-
     function startTour(){
       tourOn = true;
       document.getElementById("tourBtn").textContent = "⏸ Tour";
@@ -414,52 +367,124 @@
 
       const step = () => {
         if (!tourOn) return;
-        if (travelLock){
-          tourTimer = setTimeout(step, 300);
+        if (traveling) {
+          tourTimer = setTimeout(step, 250);
           return;
         }
         travelTo(tourOrder[i % tourOrder.length]);
         i++;
         tourTimer = setTimeout(step, 2200);
       };
-
       step();
     }
 
-    document.getElementById("tourBtn").addEventListener("click", () => {
-      if (tourOn) stopTour();
-      else startTour();
-    });
+    document.getElementById("tourBtn").onclick = () => tourOn ? stopTour() : startTour();
 
-    // ---------- THEME ----------
-    let isDark = false;
-    function toggleTheme(){
+    // ----------------- THEME TOGGLE -----------------
+    document.getElementById("themeBtn").onclick = async () => {
       isDark = !isDark;
       document.body.classList.toggle("dark", isDark);
       document.getElementById("themeBtn").textContent = isDark ? "☀️ Light" : "🌙 Dark";
-      if (isDark){
-        if (map.hasLayer(lightTiles)) map.removeLayer(lightTiles);
-        if (!map.hasLayer(darkTiles)) darkTiles.addTo(map);
+
+      // reload style (MapLibre requires re-adding layers after style change)
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+
+      map.setStyle(isDark ? STYLE_DARK : STYLE_LIGHT);
+
+      map.once("styledata", () => {
+        // restore and rebuild layers
+        map.jumpTo({ center, zoom });
+        initLayers();
+      });
+    };
+
+    // ----------------- INIT LAYERS (reusable on style change) -----------------
+    function initLayers(){
+      // sources
+      if (!map.getSource(DEST_SOURCE)) {
+        map.addSource(DEST_SOURCE, { type:"geojson", data: buildDestGeoJSON() });
       } else {
-        if (map.hasLayer(darkTiles)) map.removeLayer(darkTiles);
-        if (!map.hasLayer(lightTiles)) lightTiles.addTo(map);
+        map.getSource(DEST_SOURCE).setData(buildDestGeoJSON());
       }
-      refreshMapSize();
+
+      if (!map.getSource(ROUTE_SOURCE)) {
+        map.addSource(ROUTE_SOURCE, {
+          type:"geojson",
+          data:{
+            type:"FeatureCollection",
+            features:[{ type:"Feature", geometry:{ type:"LineString", coordinates:[places.resume.ll, places.resume.ll] } }]
+          }
+        });
+      }
+
+      // route line
+      if (!map.getLayer("route-line")) {
+        map.addLayer({
+          id:"route-line",
+          type:"line",
+          source: ROUTE_SOURCE,
+          layout:{ "line-cap":"round", "line-join":"round" },
+          paint:{
+            "line-color":"#2f80ff",
+            "line-opacity":0.9,
+            // scales with zoom
+            "line-width":[
+              "interpolate", ["linear"], ["zoom"],
+              4, 2,
+              6, 4,
+              8, 6,
+              10, 8
+            ],
+            "line-dasharray":[2,2]
+          }
+        });
+      }
+
+      // pins
+      if (!map.getLayer("dest-circles")) {
+        map.addLayer({
+          id:"dest-circles",
+          type:"circle",
+          source: DEST_SOURCE,
+          paint:{
+            "circle-color":["get","color"],
+            "circle-stroke-color":"#ffffff",
+            "circle-stroke-width":2,
+            "circle-opacity":1,
+            // scales with zoom
+            "circle-radius":[
+              "interpolate", ["linear"], ["zoom"],
+              4, 6,
+              6, 8,
+              8, 10,
+              10, 12
+            ]
+          }
+        });
+      }
+
+      // click handler (pins)
+      map.on("click", "dest-circles", (e) => {
+        stopTour();
+        const f = e.features && e.features[0];
+        if (!f) return;
+        const key = f.properties.key;
+        travelTo(key);
+      });
+
+      // hover cursor
+      map.on("mouseenter", "dest-circles", () => map.getCanvas().style.cursor = "pointer");
+      map.on("mouseleave", "dest-circles", () => map.getCanvas().style.cursor = "");
+
+      // start at resume
+      setRoute(places.resume.ll, places.resume.ll);
     }
-    document.getElementById("themeBtn").addEventListener("click", toggleTheme);
 
-    // ---------- INIT ----------
-    refreshMapSize();
-    unlockMap();
-    rescale();
-    map.setView(places.resume.latlng, 6, { animate:false });
-    openPanel("resume");
-
-    // If user touches map while traveling, cancel travel cleanly (prevents stuck)
-    ["mousedown","touchstart","wheel"].forEach(evt => {
-      map.getContainer().addEventListener(evt, () => {
-        if (travelLock && tourOn === false) cancelTravel();
-      }, { passive:true });
+    map.on("load", () => {
+      initLayers();
+      openPanel("resume");
+      map.easeTo({ center: places.resume.ll, zoom: 5.8, duration: 0 });
     });
   </script>
 </body>
